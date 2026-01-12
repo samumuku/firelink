@@ -16,13 +16,12 @@ COLOR_ACCENT = "#D32F2F"
 COLOR_HOVER = "#FF5722"        
 COLOR_PROGRESS = "#FF8C00"     
 COLOR_TEXT_LOGO = "#FF4500"    
-COLOR_SIDEBAR = "#1a1a1a"      
-COLOR_MAIN_BG = "#2b2b2b"      
+COLOR_SIDEBAR = "#1a1a1a"      # Nav Sidebar (Darkest)
+COLOR_PAGE_BG = "#2b2b2b"      # Content Background
+COLOR_FRIENDS_BG = "#232323"   # Friends List Background
 COLOR_SCROLLBAR = "#8B0000"    
 
-# --- HELPER: SAVE/LOAD USERS ---
-# This saves the file to C:\Users\YourName\firelink_users.json
-# This guarantees we have permission to write to it.
+# --- HELPER: PATHS & CONFIG ---
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), "firelink_users.json")
 
 def load_users():
@@ -41,21 +40,208 @@ def save_user(username):
             json.dump(users, f)
 
 def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
-
     return os.path.join(base_path, relative_path)
 
-# --- SCREEN 1: THE WELCOME / AUTH PAGE ---
+# --- PAGE 1: FILE TRANSFER FEATURE ---
+class TransferPage(ctk.CTkFrame):
+    def __init__(self, master, username):
+        super().__init__(master, fg_color=COLOR_PAGE_BG, corner_radius=0)
+        self.my_name = username
+        
+        # --- LOGIC ---
+        real_downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
+        self.transfer_engine = file_transfer.FileTransfer(download_folder=real_downloads_path)
+        self.transfer_engine.start_receiver(self.update_status, self.update_progress)
+
+        self.selected_friend_ip = None
+        self.known_friends = [] 
+
+        # --- LAYOUT: SPLIT INTO FRIENDS LIST (Left) AND STATUS (Right) ---
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        # 1. Friends Sidebar (Internal to this page)
+        self.friends_frame = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color=COLOR_FRIENDS_BG)
+        self.friends_frame.grid(row=0, column=0, sticky="nsew")
+        
+        ctk.CTkLabel(self.friends_frame, text="ACTIVE EMBERS", font=("Arial", 14, "bold"), text_color="gray").pack(pady=(20, 10))
+        
+        self.friends_list = ctk.CTkScrollableFrame(self.friends_frame, width=180, fg_color="transparent",
+                                                   scrollbar_button_color=COLOR_SCROLLBAR, scrollbar_button_hover_color=COLOR_HOVER)
+        self.friends_list.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Manual Connect Button (Small, at bottom of friends list)
+        self.manual_btn = ctk.CTkButton(self.friends_frame, text="Manual IP", 
+                                        height=25, fg_color="transparent", border_width=1, 
+                                        text_color="gray", border_color="gray",
+                                        command=self.manual_connect_dialog)
+        self.manual_btn.pack(pady=20)
+
+        # 2. Main Action Area (Right Side)
+        self.action_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.action_frame.grid(row=0, column=1, sticky="nsew")
+
+        # Centering Content
+        self.center_box = ctk.CTkFrame(self.action_frame, fg_color="transparent")
+        self.center_box.place(relx=0.5, rely=0.5, anchor="center")
+
+        self.status_label = ctk.CTkLabel(self.center_box, text="Searching for sparks...", font=("Arial", 24), text_color="#dce4e6")
+        self.status_label.pack(pady=(0, 20))
+
+        self.progressbar = ctk.CTkProgressBar(self.center_box, width=400, progress_color=COLOR_PROGRESS)
+        self.progressbar.pack(pady=10)
+        self.progressbar.set(0)
+        
+        self.pct_label = ctk.CTkLabel(self.center_box, text="0%", text_color="gray")
+        self.pct_label.pack(pady=5)
+        
+        self.action_button = ctk.CTkButton(self.center_box, text="Select Friend First", state="disabled",
+                                           fg_color=COLOR_ACCENT, hover_color=COLOR_HOVER, 
+                                           font=("Arial", 16, "bold"), height=40,
+                                           command=self.pick_and_send)
+        self.action_button.pack(pady=30)
+
+        # --- NETWORKING START ---
+        self.discovery = network.PeerDiscovery(self.my_name, self.found_friend, None)
+        self.discovery.start()
+
+    # --- LOGIC METHODS ---
+    def found_friend(self, name, ip):
+        if ip not in self.known_friends:
+            self.known_friends.append(ip)
+            self.after(0, lambda: self.create_friend_button(name, ip))
+
+    def create_friend_button(self, name, ip):
+        btn = ctk.CTkButton(self.friends_list, text=f"{name}", fg_color="transparent", 
+                            border_width=1, border_color="#B22222", hover_color=COLOR_ACCENT, 
+                            anchor="w",
+                            command=lambda: self.select_friend(name, ip))
+        btn.pack(pady=5, fill="x")
+
+    def manual_connect_dialog(self):
+        ip = ctk.CTkInputDialog(text="Enter IP:", title="Direct Connect").get_input()
+        if ip: self.select_friend(f"Ghost ({ip})", ip)
+
+    def select_friend(self, name, ip):
+        self.selected_friend_ip = ip
+        self.status_label.configure(text=f"Linked with {name}")
+        self.action_button.configure(state="normal", text="IGNITE (Send File)")
+
+    def pick_and_send(self):
+        if not self.selected_friend_ip: return
+        filename = filedialog.askopenfilename()
+        if filename:
+            self.transfer_engine.send_file(self.selected_friend_ip, filename, self.update_status, self.update_progress)
+
+    def update_status(self, text):
+        self.after(0, lambda: self.status_label.configure(text=text))
+
+    def update_progress(self, val):
+        self.after(0, lambda: self.progressbar.set(val))
+        self.after(0, lambda: self.pct_label.configure(text=f"{int(val*100)}%"))
+
+
+# --- GENERIC PLACEHOLDER PAGE ---
+class PlaceholderPage(ctk.CTkFrame):
+    def __init__(self, master, title):
+        super().__init__(master, fg_color=COLOR_PAGE_BG, corner_radius=0)
+        
+        label = ctk.CTkLabel(self, text=title, font=("Arial", 30, "bold"), text_color="gray")
+        label.place(relx=0.5, rely=0.5, anchor="center")
+        
+        sub = ctk.CTkLabel(self, text="Feature coming soon...", font=("Arial", 16), text_color="gray")
+        sub.place(relx=0.5, rely=0.55, anchor="center")
+
+
+# --- THE DASHBOARD (Nav Bar + Page Switcher) ---
+class Dashboard(ctk.CTkFrame):
+    def __init__(self, master, username):
+        super().__init__(master, fg_color=COLOR_PAGE_BG)
+        
+        # Grid: Col 0 = Nav Sidebar, Col 1 = Page Content
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        # --- 1. NAVIGATION SIDEBAR (Far Left) ---
+        self.nav_bar = ctk.CTkFrame(self, width=140, corner_radius=0, fg_color=COLOR_SIDEBAR)
+        self.nav_bar.grid(row=0, column=0, sticky="nsew")
+        
+        # Logo Area
+        logo_path = resource_path(os.path.join("img", "logo.jpg"))
+        if os.path.exists(logo_path):
+            img_data = Image.open(logo_path)
+            self.logo_img = ctk.CTkImage(img_data, img_data, size=(100, 60)) 
+            ctk.CTkLabel(self.nav_bar, text="", image=self.logo_img).pack(pady=(30, 10))
+        
+        ctk.CTkLabel(self.nav_bar, text="FIRELINK", font=("Arial", 18, "bold"), text_color=COLOR_TEXT_LOGO).pack(pady=(0, 30))
+
+        # Nav Buttons
+        self.btn_transfer = self.create_nav_btn("Transfer", self.show_transfer)
+        self.btn_test1 = self.create_nav_btn("Test 1", self.show_test1)
+        self.btn_test2 = self.create_nav_btn("Test 2", self.show_test2)
+
+        # User Profile (Bottom)
+        self.user_lbl = ctk.CTkLabel(self.nav_bar, text=f"{username}", text_color="gray")
+        self.user_lbl.pack(side="bottom", pady=20)
+
+        # --- 2. MAIN CONTENT AREA ---
+        self.content_area = ctk.CTkFrame(self, corner_radius=0, fg_color=COLOR_PAGE_BG)
+        self.content_area.grid(row=0, column=1, sticky="nsew")
+        self.content_area.grid_rowconfigure(0, weight=1)
+        self.content_area.grid_columnconfigure(0, weight=1)
+
+        # --- INITIALIZE PAGES ---
+        # We create them all now so they keep running in background
+        self.page_transfer = TransferPage(self.content_area, username)
+        self.page_test1 = PlaceholderPage(self.content_area, "Future Module 1")
+        self.page_test2 = PlaceholderPage(self.content_area, "Future Module 2")
+
+        # Show default
+        self.show_transfer()
+
+    def create_nav_btn(self, text, command):
+        btn = ctk.CTkButton(self.nav_bar, text=text, fg_color="transparent", 
+                            text_color="lightgray", hover_color=COLOR_FRIENDS_BG, 
+                            anchor="w", height=40, command=command)
+        btn.pack(fill="x", padx=10, pady=5)
+        return btn
+
+    def show_transfer(self):
+        self.highlight_btn(self.btn_transfer)
+        self.show_frame(self.page_transfer)
+
+    def show_test1(self):
+        self.highlight_btn(self.btn_test1)
+        self.show_frame(self.page_test1)
+
+    def show_test2(self):
+        self.highlight_btn(self.btn_test2)
+        self.show_frame(self.page_test2)
+
+    def show_frame(self, frame):
+        # Hide all, show one
+        self.page_transfer.grid_forget()
+        self.page_test1.grid_forget()
+        self.page_test2.grid_forget()
+        frame.grid(row=0, column=0, sticky="nsew")
+
+    def highlight_btn(self, active_btn):
+        # Reset colors
+        for btn in [self.btn_transfer, self.btn_test1, self.btn_test2]:
+            btn.configure(fg_color="transparent", text_color="lightgray")
+        # Highlight active
+        active_btn.configure(fg_color=COLOR_ACCENT, text_color="white")
+
+
+# --- AUTH FRAME (Unchanged) ---
 class AuthFrame(ctk.CTkFrame):
     def __init__(self, master, on_login_success):
-        super().__init__(master, fg_color=COLOR_MAIN_BG)
+        super().__init__(master, fg_color=COLOR_PAGE_BG)
         self.on_login_success = on_login_success 
-        
         self.center_box = ctk.CTkFrame(self, fg_color="transparent")
         self.center_box.place(relx=0.5, rely=0.5, anchor="center")
 
@@ -65,61 +251,44 @@ class AuthFrame(ctk.CTkFrame):
             self.logo_img = ctk.CTkImage(img_data, img_data, size=(250, 140))
             ctk.CTkLabel(self.center_box, text="", image=self.logo_img).pack(pady=10)
 
-        ctk.CTkLabel(self.center_box, text="FIRELINK", font=("Arial", 32, "bold"), 
-                     text_color=COLOR_TEXT_LOGO).pack(pady=(0, 30))
-
+        ctk.CTkLabel(self.center_box, text="FIRELINK", font=("Arial", 32, "bold"), text_color=COLOR_TEXT_LOGO).pack(pady=(0, 30))
+        
+        # Mode Switch
         self.mode_frame = ctk.CTkFrame(self.center_box, fg_color="transparent")
         self.mode_frame.pack(pady=10)
-        
-        self.btn_mode_login = ctk.CTkButton(self.mode_frame, text="Login", width=100, 
-                                            fg_color=COLOR_ACCENT, hover_color=COLOR_HOVER,
-                                            command=self.show_login)
+        self.btn_mode_login = ctk.CTkButton(self.mode_frame, text="Login", width=100, fg_color=COLOR_ACCENT, command=self.show_login)
         self.btn_mode_login.pack(side="left", padx=5)
-        
-        self.btn_mode_register = ctk.CTkButton(self.mode_frame, text="Register", width=100,
-                                               fg_color="transparent", border_width=1, border_color=COLOR_ACCENT,
-                                               command=self.show_register)
+        self.btn_mode_register = ctk.CTkButton(self.mode_frame, text="Register", width=100, fg_color="transparent", border_width=1, border_color=COLOR_ACCENT, command=self.show_register)
         self.btn_mode_register.pack(side="left", padx=5)
 
         self.input_frame = ctk.CTkFrame(self.center_box, fg_color="transparent")
         self.input_frame.pack(pady=20)
-        
         self.entry_widget = None 
         self.show_login() 
 
     def show_login(self):
         self.btn_mode_login.configure(fg_color=COLOR_ACCENT)
         self.btn_mode_register.configure(fg_color="transparent")
-        
         for widget in self.input_frame.winfo_children(): widget.destroy()
         
         users = load_users()
         if not users: users = ["No profiles found"]
-        
         self.entry_widget = ctk.CTkComboBox(self.input_frame, values=users, width=220)
         self.entry_widget.pack(pady=5)
-        
-        ctk.CTkButton(self.input_frame, text="Enter the Fire", width=220, 
-                      fg_color=COLOR_ACCENT, hover_color=COLOR_HOVER,
-                      command=self.perform_login).pack(pady=15)
+        ctk.CTkButton(self.input_frame, text="Enter the Fire", width=220, fg_color=COLOR_ACCENT, hover_color=COLOR_HOVER, command=self.perform_login).pack(pady=15)
 
     def show_register(self):
         self.btn_mode_login.configure(fg_color="transparent")
         self.btn_mode_register.configure(fg_color=COLOR_ACCENT)
-        
         for widget in self.input_frame.winfo_children(): widget.destroy()
         
         self.entry_widget = ctk.CTkEntry(self.input_frame, placeholder_text="New Username", width=220)
         self.entry_widget.pack(pady=5)
-        
-        ctk.CTkButton(self.input_frame, text="Create Profile", width=220, 
-                      fg_color=COLOR_ACCENT, hover_color=COLOR_HOVER,
-                      command=self.perform_register).pack(pady=15)
+        ctk.CTkButton(self.input_frame, text="Create Profile", width=220, fg_color=COLOR_ACCENT, hover_color=COLOR_HOVER, command=self.perform_register).pack(pady=15)
 
     def perform_login(self):
         name = self.entry_widget.get()
-        if name and name != "No profiles found":
-            self.on_login_success(name)
+        if name and name != "No profiles found": self.on_login_success(name)
 
     def perform_register(self):
         name = self.entry_widget.get()
@@ -128,134 +297,16 @@ class AuthFrame(ctk.CTkFrame):
             self.on_login_success(name)
 
 
-class MainInterfaceFrame(ctk.CTkFrame):
-    def __init__(self, master, username):
-        super().__init__(master, fg_color=COLOR_MAIN_BG)
-        self.my_name = username
-
-        # --- SETUP FILE TRANSFER ENGINE ---
-        # Get the real system Downloads folder
-        real_downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
-        
-        self.transfer_engine = file_transfer.FileTransfer(download_folder=real_downloads_path)
-        self.transfer_engine.start_receiver(self.update_status, self.update_progress)
-        
-        # 1. Grid Layout
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(0, weight=1)
-
-        # --- SIDEBAR ---
-        self.sidebar = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color=COLOR_SIDEBAR)
-        self.sidebar.grid(row=0, column=0, sticky="nsew")
-        
-        # Load Logo
-        logo_path = resource_path(os.path.join("img", "logo.jpg"))
-        if os.path.exists(logo_path):
-            img_data = Image.open(logo_path)
-            self.logo_img = ctk.CTkImage(img_data, img_data, size=(180, 100)) 
-            ctk.CTkLabel(self.sidebar, text="", image=self.logo_img).grid(row=0, column=0, padx=20, pady=(20,0))
-
-        ctk.CTkLabel(self.sidebar, text="FIRELINK", font=("Arial", 24, "bold"), text_color=COLOR_TEXT_LOGO).grid(row=1, column=0, pady=(5, 20))
-        
-        self.user_card = ctk.CTkFrame(self.sidebar, fg_color="#333", corner_radius=5)
-        self.user_card.grid(row=2, column=0, padx=10, pady=(0,20), sticky="ew")
-        ctk.CTkLabel(self.user_card, text=f"Logged in as:\n{self.my_name}", text_color="gray").pack(pady=5)
-
-        ctk.CTkLabel(self.sidebar, text="Available:", text_color="gray").grid(row=3, column=0, padx=20, pady=5)
-
-        self.friends_list = ctk.CTkScrollableFrame(self.sidebar, width=180, height=250, fg_color="transparent",
-                                                   scrollbar_button_color=COLOR_SCROLLBAR, scrollbar_button_hover_color=COLOR_HOVER)
-        self.friends_list.grid(row=4, column=0, padx=20, pady=5)
-        
-        # --- NEW: MANUAL CONNECT BUTTON ---
-        # If firewall blocks discovery, use this to force a connection
-        self.manual_btn = ctk.CTkButton(self.sidebar, text="Manual Connect (IP)", 
-                                        height=30, fg_color="transparent", border_width=1, 
-                                        text_color="gray", border_color="gray",
-                                        command=self.manual_connect_dialog)
-        self.manual_btn.grid(row=5, column=0, padx=20, pady=20)
-
-        # --- MAIN AREA ---
-        self.main_area = ctk.CTkFrame(self, corner_radius=0, fg_color=COLOR_MAIN_BG)
-        self.main_area.grid(row=0, column=1, sticky="nsew")
-
-        self.status_label = ctk.CTkLabel(self.main_area, text="Finding items to send", font=("Arial", 24), text_color="#dce4e6")
-        self.status_label.pack(pady=(150, 20))
-
-        self.progressbar = ctk.CTkProgressBar(self.main_area, width=400, progress_color=COLOR_PROGRESS)
-        self.progressbar.pack(pady=10)
-        self.progressbar.set(0)
-        
-        self.pct_label = ctk.CTkLabel(self.main_area, text="0%", text_color="gray")
-        self.pct_label.pack(pady=5)
-        
-        self.action_button = ctk.CTkButton(self.main_area, text="Select Friend First", state="disabled",
-                                           fg_color=COLOR_ACCENT, hover_color=COLOR_HOVER, 
-                                           command=self.pick_and_send)
-        self.action_button.pack(pady=20)
-
-        # --- NETWORKING ---
-        self.selected_friend_ip = None
-        self.known_friends = [] 
-        self.discovery = network.PeerDiscovery(self.my_name, self.found_friend, None)
-        self.discovery.start()
-
-    def found_friend(self, name, ip):
-        if ip not in self.known_friends:
-            self.known_friends.append(ip)
-            self.after(0, lambda: self.create_friend_button(name, ip))
-
-    def create_friend_button(self, name, ip):
-        btn = ctk.CTkButton(self.friends_list, text=f"{name}", fg_color="transparent", 
-                            border_width=1, border_color="#B22222", hover_color=COLOR_ACCENT, 
-                            command=lambda: self.select_friend(name, ip))
-        btn.pack(pady=5, fill="x")
-
-    def manual_connect_dialog(self):
-        """Ask for IP manually if the firewall blocks discovery"""
-        ip = ctk.CTkInputDialog(text="Enter friend's IP Address:", title="Direct Connect").get_input()
-        if ip:
-            # We add them as a "Ghost" friend
-            self.select_friend(f"Ghost ({ip})", ip)
-
-    def select_friend(self, name, ip):
-        self.selected_friend_ip = ip
-        self.status_label.configure(text=f"Linked with {name}")
-        self.action_button.configure(state="normal", text="Select file(s) to send")
-
-    def pick_and_send(self):
-        if not self.selected_friend_ip: return
-        filename = filedialog.askopenfilename()
-        if filename:
-            self.transfer_engine.send_file(
-                self.selected_friend_ip, 
-                filename, 
-                self.update_status, 
-                self.update_progress
-            )
-
-    def update_status(self, text):
-        self.after(0, lambda: self.status_label.configure(text=text))
-
-    def update_progress(self, val):
-        self.after(0, lambda: self.progressbar.set(val))
-        self.after(0, lambda: self.pct_label.configure(text=f"{int(val*100)}%"))
-        
 # --- ROOT APP ---
 class FirelinkApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Firelink")
-        self.geometry("900x600")
+        self.geometry("1000x650") # Made wider for the nav bar
         self.resizable(False, False)
-        
-        # --- PREVENT WINDOWS FROM SLEEPING THIS APP ---
-        # This tells Windows: "ES_CONTINUOUS | ES_SYSTEM_REQUIRED"
-        # It forces the OS to keep the background threads (networking) running at full speed.
-        try:
-            ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)
-        except Exception as e:
-            print(f"Could not set execution state: {e}")
+
+        try: ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)
+        except: pass
 
         icon_path = resource_path(os.path.join("img", "fire.ico"))
         if os.path.exists(icon_path): self.iconbitmap(icon_path)
@@ -265,12 +316,13 @@ class FirelinkApp(ctk.CTk):
 
     def show_auth(self):
         if self.current_frame: self.current_frame.destroy()
-        self.current_frame = AuthFrame(self, self.start_app)
+        self.current_frame = AuthFrame(self, self.start_dashboard)
         self.current_frame.pack(fill="both", expand=True)
 
-    def start_app(self, username):
+    def start_dashboard(self, username):
         if self.current_frame: self.current_frame.destroy()
-        self.current_frame = MainInterfaceFrame(self, username)
+        # Switch to the new Dashboard (which holds the Transfer Page)
+        self.current_frame = Dashboard(self, username)
         self.current_frame.pack(fill="both", expand=True)
 
 if __name__ == "__main__":
