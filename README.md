@@ -1,4 +1,5 @@
 # firelink
+
 Personal project for sharing files and other utilities via Peer to Peer and Chunking.
 Used by me and my friends
 
@@ -11,6 +12,7 @@ Used by me and my friends
 ### Installing the dependencies
 
 In the **`src`** folder
+
 ```bash
 pip install -r requirements
 ```
@@ -18,6 +20,13 @@ pip install -r requirements
 ### Launch the app
 
 In the **`src`** folder
+
 ```bash
 python main.py
+```
+
+### Create an exe file to share
+
+```bash
+pyinstaller --noconsole --onefile --icon=img/fire.ico --add-data "img;img" --name="Firelink" main.py
 ```

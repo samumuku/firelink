@@ -1,0 +1,18 @@
+# --- Build artifacts
+build/
+dist/
+*.spec
+
+# --- Python temporary files
+__pycache__/
+*.pyc
+
+# --- Local config & DB
+users.json
+firelink_users.json
+*.json
+
+# --- OS generated files
+# --- normally they shouldnt exist
+.DS_Store
+Thumbs.db
