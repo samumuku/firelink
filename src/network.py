@@ -4,40 +4,74 @@ import time
 import json
 
 # --- CONFIGURATION ---
-BROADCAST_IP = "255.255.255.255" # everyone on the local network
-DISCOVERY_PORT = 12345 # port for discovery messages
+DISCOVERY_PORT = 12345
 
 class PeerDiscovery:
     def __init__(self, username, on_peer_found, on_db_update=None):
         self.username = username
-        self.on_peer_found = on_peer_found # Callback when a new peer is found
-        self.on_db_update = on_db_update # Callback for when the Shared DB changes
+        self.on_peer_found = on_peer_found
+        self.on_db_update = on_db_update
         self.running = True
         
-        self.machine_name = socket.gethostname() # The local machine name
-        
-        # THE SHARED DATABASE (Stores files everyone is sharing)
-        # Format: { "filename": { "owner": "Mike", "ip": "25.x.x.x", "size": "2GB" } }
-        # Unused for now
+        self.machine_name = socket.gethostname()
         self.shared_db = {} 
 
         # Setup Socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        
+        # Bind to all interfaces
         self.sock.bind(("", DISCOVERY_PORT))
 
     def start(self):
         threading.Thread(target=self.listen_loop, daemon=True).start()
         threading.Thread(target=self.broadcast_loop, daemon=True).start()
 
+    def get_broadcast_targets(self):
+        """
+        Identify all network interfaces and calculate their broadcast addresses.
+        This ensures the packet goes into the VPN tunnel, not just the WiFi.
+        """
+        targets = ["255.255.255.255"] # Always try global default
+        try:
+            # Get all IP addresses associated with this computer
+            hostname = socket.gethostname()
+            local_ips = socket.gethostbyname_ex(hostname)[2]
+            
+            for ip in local_ips:
+                # Calculate broadcast based on common VPN patterns
+                parts = ip.split('.')
+                
+                # Hamachi usually uses 25.x.x.x
+                if parts[0] == '25':
+                    targets.append("25.255.255.255")
+                
+                # Radmin VPN usually uses 26.x.x.x
+                elif parts[0] == '26':
+                    targets.append("26.255.255.255")
+                
+                # ZeroTier usually uses 10.x.x.x (Class A)
+                elif parts[0] == '10':
+                    targets.append("10.255.255.255")
+                    
+                # Standard Home Network (192.168.x.x)
+                elif parts[0] == '192' and parts[1] == '168':
+                    targets.append(f"192.168.{parts[2]}.255")
+                    
+                # Standard Class B (172.16-31.x.x)
+                elif parts[0] == '172':
+                    targets.append(f"172.{parts[1]}.255.255")
+                    
+        except Exception:
+            pass
+            
+        return list(set(targets)) # Remove duplicates
+
     def share_file_announcement(self, filename, size):
-        """Call this when YOU want to share a file with the group"""
-        # Update my local list
         file_info = {"owner": self.username, "ip": "MY_IP", "size": size} 
         self.shared_db[filename] = file_info
         
-        # Shout it to the network
         msg = {
             "type": "ADD_FILE",
             "user": self.username,
@@ -46,15 +80,25 @@ class PeerDiscovery:
         self.send_json(msg)
 
     def send_json(self, data_dict):
-        """Helper to send JSON data safely"""
+        """Send the message to ALL calculated broadcast targets"""
         try:
             msg_str = json.dumps(data_dict)
-            self.sock.sendto(msg_str.encode(), (BROADCAST_IP, DISCOVERY_PORT))
+            encoded_msg = msg_str.encode()
+            
+            # The Shotgun Approach: Send to every possible broadcast address
+            targets = self.get_broadcast_targets()
+            
+            for target_ip in targets:
+                try:
+                    self.sock.sendto(encoded_msg, (target_ip, DISCOVERY_PORT))
+                except OSError:
+                    # Some interfaces might fail (e.g., if disconnected), just ignore
+                    pass
+                    
         except Exception as e:
             print(f"Send Error: {e}")
 
     def broadcast_loop(self):
-        """The Mouth: Shouts 'I am here' every 3 seconds"""
         while self.running:
             msg = {
                 "type": "HELLO",
@@ -65,39 +109,33 @@ class PeerDiscovery:
             time.sleep(3)
 
     def listen_loop(self):
-        """The Ear: Listens for Friends and Files"""
         while self.running:
             try:
                 data, addr = self.sock.recvfrom(4096)
                 try:
                     msg = json.loads(data.decode())
-                except: continue # Skip junk data
+                except: continue 
 
                 sender_ip = addr[0]
                 sender_name = msg.get("user", "Unknown")
                 sender_machine = msg.get("machine", "Unknown Machine")
                 msg_type = msg.get("type")
 
-                # Don't listen to myself
                 if sender_name == self.username:
                     continue
 
-                # If it's a Hello, add them to friends list
                 if msg_type == "HELLO":
+                    # Using display name composition from previous context
                     display_name = f"{sender_name} ({sender_machine})"
                     self.on_peer_found(display_name, sender_ip)
 
-                # If it's a File Announcement, add to database
                 elif msg_type == "ADD_FILE":
                     file_data = msg.get("data")
                     fname = file_data["name"]
                     finfo = file_data["info"]
-                    
-                    # Ensure the IP is the actual sender's IP
                     finfo["ip"] = sender_ip 
                     
                     self.shared_db[fname] = finfo
-                    # Trigger the GUI update if it exists
                     if self.on_db_update:
                         self.on_db_update(self.shared_db)
 

@@ -6,7 +6,7 @@ import os
 import threading
 import subprocess
 
-# Our Modules
+# fichiers
 import utils
 import network
 import file_transfer
