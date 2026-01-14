@@ -14,7 +14,7 @@ Used by me and my friends
 In the **`src`** folder
 
 ```bash
-pip install -r requirements
+pip install -r requirements.txt
 ```
 
 ### Launch the app

@@ -25,21 +25,38 @@ class PeerDiscovery:
 
     def start(self):
         threading.Thread(target=self.listen_loop, daemon=True).start()
-        # We run BOTH Broadcast (for normal networks) AND Scan (for strict networks)
         threading.Thread(target=self.broadcast_loop, daemon=True).start()
         threading.Thread(target=self.scan_loop, daemon=True).start()
 
+    def get_smart_targets(self):
+        """Returns specific broadcast addresses for Hamachi/VPNs"""
+        targets = set()
+        targets.add("255.255.255.255") # Global default
+        
+        try:
+            # Detect Hamachi (25.x) or Radmin (26.x)
+            hostname = socket.gethostname()
+            local_ips = socket.gethostbyname_ex(hostname)[2]
+            
+            for ip in local_ips:
+                if ip.startswith("25."):
+                    targets.add("25.255.255.255") # Target ALL Hamachi users
+                elif ip.startswith("26."):
+                    targets.add("26.255.255.255") # Target ALL Radmin users
+        except: pass
+        
+        return list(targets)
+
     def get_local_subnets(self):
-        """Finds the base IP (e.g., 192.168.1) for all adapters"""
+        """Finds the base IP (e.g., 192.168.1) for standard LAN scanning"""
         subnets = []
         try:
             hostname = socket.gethostname()
             local_ips = socket.gethostbyname_ex(hostname)[2]
             for ip in local_ips:
                 parts = ip.split('.')
-                # Only care about standard IPv4 
-                if len(parts) == 4:
-                    # Store "192.168.1"
+                # Only scan standard LAN IPs (192.168.x / 172.x / 10.x)
+                if len(parts) == 4 and parts[0] in ["192", "172", "10"]:
                     base = f"{parts[0]}.{parts[1]}.{parts[2]}"
                     subnets.append(base)
         except: pass
@@ -52,8 +69,24 @@ class PeerDiscovery:
             self.sock.sendto(msg, (target_ip, DISCOVERY_PORT))
         except: pass
 
+    def broadcast_loop(self):
+        """Sends to Global + Hamachi Broadcast addresses"""
+        while self.running:
+            msg = {
+                "type": "HELLO",
+                "user": self.username,
+                "machine": self.machine_name
+            }
+            
+            # Send to 255.255.255.255 AND 25.255.255.255
+            targets = self.get_smart_targets()
+            for t in targets:
+                self.send_packet(t, msg)
+                
+            time.sleep(3)
+
     def scan_loop(self):
-        """The Brute Force: Sends a packet to .1 through .254 individually"""
+        """Only scans LAN subnets (Hotspots/Home WiFi)"""
         while self.running:
             msg = {
                 "type": "HELLO",
@@ -63,34 +96,17 @@ class PeerDiscovery:
             
             subnets = self.get_local_subnets()
             for base_ip in subnets:
-                # Loop through 1 to 254 (Standard Home/Hotspot range)
                 for i in range(1, 255):
-                    target = f"{base_ip}.{i}"
-                    self.send_packet(target, msg)
-                    # Tiny sleep to prevent crashing the router
+                    self.send_packet(f"{base_ip}.{i}", msg)
                     time.sleep(0.005) 
             
-            # Wait 10 seconds before scanning again (so we don't lag the network)
             time.sleep(10)
-
-    def broadcast_loop(self):
-        """Standard Broadcast (Kept as backup)"""
-        while self.running:
-            msg = {
-                "type": "HELLO",
-                "user": self.username,
-                "machine": self.machine_name
-            }
-            # Try global broadcast
-            self.send_packet("255.255.255.255", msg)
-            time.sleep(3)
 
     def listen_loop(self):
         while self.running:
             try:
                 data, addr = self.sock.recvfrom(4096)
-                try:
-                    msg = json.loads(data.decode())
+                try: msg = json.loads(data.decode())
                 except: continue 
 
                 sender_ip = addr[0]
@@ -103,6 +119,8 @@ class PeerDiscovery:
                     name = msg.get("user", "Unknown")
                     machine = msg.get("machine", "Unknown")
                     self.on_peer_found(f"{name} ({machine})", sender_ip)
+                
+                # ... (Handle other messages like CLIPBOARD/LOBBY here)
 
             except Exception as e:
                 print(f"Listen Error: {e}")
