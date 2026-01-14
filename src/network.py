@@ -4,18 +4,21 @@ import time
 import json
 
 # --- CONFIGURATION ---
-BROADCAST_IP = "255.255.255.255"
-DISCOVERY_PORT = 12345
+BROADCAST_IP = "255.255.255.255" # everyone on the local network
+DISCOVERY_PORT = 12345 # port for discovery messages
 
 class PeerDiscovery:
     def __init__(self, username, on_peer_found, on_db_update=None):
         self.username = username
-        self.on_peer_found = on_peer_found
+        self.on_peer_found = on_peer_found # Callback when a new peer is found
         self.on_db_update = on_db_update # Callback for when the Shared DB changes
         self.running = True
         
+        self.machine_name = socket.gethostname() # The local machine name
+        
         # THE SHARED DATABASE (Stores files everyone is sharing)
         # Format: { "filename": { "owner": "Mike", "ip": "25.x.x.x", "size": "2GB" } }
+        # Unused for now
         self.shared_db = {} 
 
         # Setup Socket
@@ -30,11 +33,11 @@ class PeerDiscovery:
 
     def share_file_announcement(self, filename, size):
         """Call this when YOU want to share a file with the group"""
-        # 1. Update my local list
+        # Update my local list
         file_info = {"owner": self.username, "ip": "MY_IP", "size": size} 
         self.shared_db[filename] = file_info
         
-        # 2. Shout it to the network
+        # Shout it to the network
         msg = {
             "type": "ADD_FILE",
             "user": self.username,
@@ -55,7 +58,8 @@ class PeerDiscovery:
         while self.running:
             msg = {
                 "type": "HELLO",
-                "user": self.username
+                "user": self.username,
+                "machine": self.machine_name
             }
             self.send_json(msg)
             time.sleep(3)
@@ -70,18 +74,20 @@ class PeerDiscovery:
                 except: continue # Skip junk data
 
                 sender_ip = addr[0]
-                sender_name = msg.get("user")
+                sender_name = msg.get("user", "Unknown")
+                sender_machine = msg.get("machine", "Unknown Machine")
                 msg_type = msg.get("type")
 
                 # Don't listen to myself
                 if sender_name == self.username:
                     continue
 
-                # 1. If it's a Hello, add them to friends list
+                # If it's a Hello, add them to friends list
                 if msg_type == "HELLO":
-                    self.on_peer_found(sender_name, sender_ip)
+                    display_name = f"{sender_name} ({sender_machine})"
+                    self.on_peer_found(display_name, sender_ip)
 
-                # 2. If it's a File Announcement, add to database
+                # If it's a File Announcement, add to database
                 elif msg_type == "ADD_FILE":
                     file_data = msg.get("data")
                     fname = file_data["name"]

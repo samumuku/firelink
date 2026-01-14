@@ -24,6 +24,8 @@ COLOR_SCROLLBAR = "#8B0000"
 # --- HELPER: PATHS & CONFIG ---
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), "firelink_users.json")
 
+print(f"Config file path: {CONFIG_FILE}")
+
 def load_users():
     if os.path.exists(CONFIG_FILE):
         try:
@@ -46,7 +48,7 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-# --- PAGE 1: FILE TRANSFER FEATURE ---
+# --- FILE TRANSFER FEATURE ---
 class TransferPage(ctk.CTkFrame):
     def __init__(self, master, username):
         super().__init__(master, fg_color=COLOR_PAGE_BG, corner_radius=0)
@@ -64,11 +66,11 @@ class TransferPage(ctk.CTkFrame):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # 1. Friends Sidebar (Internal to this page)
+        # Friends Sidebar (Internal to this page)
         self.friends_frame = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color=COLOR_FRIENDS_BG)
         self.friends_frame.grid(row=0, column=0, sticky="nsew")
         
-        ctk.CTkLabel(self.friends_frame, text="ACTIVE EMBERS", font=("Arial", 14, "bold"), text_color="gray").pack(pady=(20, 10))
+        ctk.CTkLabel(self.friends_frame, text="Online", font=("Arial", 14, "bold"), text_color="gray").pack(pady=(20, 10))
         
         self.friends_list = ctk.CTkScrollableFrame(self.friends_frame, width=180, fg_color="transparent",
                                                    scrollbar_button_color=COLOR_SCROLLBAR, scrollbar_button_hover_color=COLOR_HOVER)
@@ -81,7 +83,7 @@ class TransferPage(ctk.CTkFrame):
                                         command=self.manual_connect_dialog)
         self.manual_btn.pack(pady=20)
 
-        # 2. Main Action Area (Right Side)
+        # Main Action Area (Right Side)
         self.action_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.action_frame.grid(row=0, column=1, sticky="nsew")
 
@@ -89,7 +91,7 @@ class TransferPage(ctk.CTkFrame):
         self.center_box = ctk.CTkFrame(self.action_frame, fg_color="transparent")
         self.center_box.place(relx=0.5, rely=0.5, anchor="center")
 
-        self.status_label = ctk.CTkLabel(self.center_box, text="Searching for sparks...", font=("Arial", 24), text_color="#dce4e6")
+        self.status_label = ctk.CTkLabel(self.center_box, text="Looking for people...", font=("Arial", 24), text_color="#dce4e6")
         self.status_label.pack(pady=(0, 20))
 
         self.progressbar = ctk.CTkProgressBar(self.center_box, width=400, progress_color=COLOR_PROGRESS)
@@ -116,30 +118,58 @@ class TransferPage(ctk.CTkFrame):
             self.after(0, lambda: self.create_friend_button(name, ip))
 
     def create_friend_button(self, name, ip):
-        btn = ctk.CTkButton(self.friends_list, text=f"{name}", fg_color="transparent", 
-                            border_width=1, border_color="#B22222", hover_color=COLOR_ACCENT, 
-                            anchor="w",
-                            command=lambda: self.select_friend(name, ip))
+        # Show friend in the list with a green circle to show they're online
+        display_text = f"🟢 {name}"
+        # Create the button
+        btn = ctk.CTkButton(self.friends_list, 
+                    text=display_text, 
+                    fg_color="transparent", 
+                    border_width=1, 
+                    border_color="#B22222", 
+                    hover_color=COLOR_ACCENT, 
+                    anchor="w",
+                    command=lambda: self.select_friend(name, ip))
         btn.pack(pady=5, fill="x")
+        btn.pack(pady=5, fill="x")
+        
+        # Create the menu
+        context_menu = tk.Menu(self, tearoff=0, bg=COLOR_PAGE_BG, fg="white")
+        context_menu.add_command(label="Ping User", command=lambda: print(f"Pinging {ip}..."))
+        context_menu.add_command(label="Block", command=lambda: print(f"Blocking {name}"))
+        
+        # Bind Right Click
+        def do_popup(event):
+            try: context_menu.tk_popup(event.x_root, event.y_root)
+            finally: context_menu.grab_release()
 
+        btn.bind("<Button-3>", do_popup)
+
+    # Connect manually to an IP address
+    # --- This was implemented because for instance, the school PCs do not allow to receive broadcast packets, without admin rights.
+    # --- So users can still connect directly if they know the IP of the target machine. But this method is not bidirectional.
+    # --- Only works in a unprofessional network environment, such as home with friends.
     def manual_connect_dialog(self):
         ip = ctk.CTkInputDialog(text="Enter IP:", title="Direct Connect").get_input()
         if ip: self.select_friend(f"Ghost ({ip})", ip)
 
+    # selecting the person to send the file(s) to
     def select_friend(self, name, ip):
-        self.selected_friend_ip = ip
+        self.selected_friend_ip = ip # ip to send to
         self.status_label.configure(text=f"Linked with {name}")
-        self.action_button.configure(state="normal", text="IGNITE (Send File)")
+        self.action_button.configure(state="normal", text="Send")
 
+    # pick a file and then send it to the person we wish to send it to
     def pick_and_send(self):
-        if not self.selected_friend_ip: return
-        filename = filedialog.askopenfilename()
+        if not self.selected_friend_ip: return # pick someone first or disable button
+        filename = filedialog.askopenfilename() # open file dialog(file window)
         if filename:
             self.transfer_engine.send_file(self.selected_friend_ip, filename, self.update_status, self.update_progress)
 
+    # simply update the label text for the current transfer status
     def update_status(self, text):
         self.after(0, lambda: self.status_label.configure(text=text))
 
+    # progress bar update, when receiving or sending
     def update_progress(self, val):
         self.after(0, lambda: self.progressbar.set(val))
         self.after(0, lambda: self.pct_label.configure(text=f"{int(val*100)}%"))
