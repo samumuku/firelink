@@ -35,12 +35,12 @@ class FileTransfer:
         print(f"[*] Listening for files on port {TCP_PORT}")
 
         while True:
-            # 1. Accept Connection
+            # Accept Connection
             client_socket, address = server_socket.accept()
             print(f"[+] Connection from {address}")
             
             try:
-                # 2. Read Metadata (Filename & Size)
+                # Read Metadata (Filename & Size)
                 received = client_socket.recv(BUFFER_SIZE).decode()
                 filename, filesize = received.split(SEPARATOR)
                 filename = os.path.basename(filename) # Remove folder paths for security
@@ -48,7 +48,7 @@ class FileTransfer:
 
                 on_status_update(f"Receiving: {filename}")
                 
-                # 3. Receive File Data
+                # Receive File Data
                 save_path = os.path.join(self.download_folder, filename)
                 progress = 0
 
@@ -90,14 +90,14 @@ class FileTransfer:
             
             on_status_update(f"Connecting to {ip}...")
             
-            # 1. Connect
+            # Connect
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((ip, TCP_PORT))
             
-            # 2. Send Metadata
+            # Send Metadata
             s.send(f"{filename}{SEPARATOR}{filesize}".encode())
             
-            # 3. Send File Data
+            # Send File Data
             on_status_update(f"Sending {filename}...")
             sent_bytes = 0
             
