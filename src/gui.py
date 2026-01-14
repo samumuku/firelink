@@ -11,6 +11,66 @@ import utils
 import network
 import file_transfer
 
+
+# --- CS2 LINEUP DATABASE ---
+# Grouping: Map -> Lineup Name -> Data
+LINEUP_DATA = {
+    "Mirage": {
+        "[SMOKE] A Stairs": {
+            "type": "Smoke",
+            "desc": "jumpthrow",
+            "img": ["Mirage/A-Stairs/step1.jpg", "Mirage/A-Stairs/jumpthrow.jpg"]
+        },
+        "[SMOKE] A Jungle": {
+            "type": "Smoke",
+            "desc": "Jumpthrow",
+            "img": ["Mirage/Jungle/step1.jpg", "Mirage/Jungle/step2.jpg"]
+        },
+        "[SMOKE] Window (Bin Spawn)": {
+            "type": "Smoke",
+            "desc": "Hold D and jump throw",
+            "img": ["Mirage/Window/step1.jpg", "Mirage/Window/d_and_jumpthrow.jpg"]
+        },
+        "[SMOKE] Mid Short (spawn)": {
+            "type": "Smoke",
+            "desc": "jumpthrow",
+            "img": ["Mirage/Short/step1.jpg", "Mirage/Short/jumpthrow.jpg"]
+        },
+        "[SMOKE] Mid Connector (spawn)": {
+            "type": "Smoke",
+            "desc": "On the bin, crouch and then jumpthrow",
+            "img": ["Mirage/Connector/step1.jpg", "Mirage/Connector/crouch_jumpthrow.jpg"]
+        },
+        "[SMOKE] Ticket": {
+            "type": "Smoke",
+            "desc": "jumpthrow",
+            "img": ["Mirage/CtSpawn/step1.jpg", "Mirage/CtSpawn/step2.jpg"]
+        },
+        "[FLASH] CT to site flash (spawn)": {
+            "type": "Flash",
+            "desc": "Flash on site. Regular throw",
+            "img": ["Mirage/FlashSiteA-CT/step1.jpg", "Mirage/FlashSiteA-CT/regular_throw.jpg"]
+        },
+    },
+    "Inferno": {
+        "[MOLY] B Banana (Car)": {
+            "type": "Molly",
+            "desc": "1. Stand on the logs at the bottom of Banana.\n2. Aim at the top of the antenna.\n3. Run forward slightly and Left-click throw.",
+            "img": ["inferno_car.png"]
+        }
+    },
+    "Dust 2": {
+        "[SMOKE] Xbox (Mid)": {
+            "type": "Smoke",
+            "desc": "1. T Spawn, hug the wall near Suicided.\n2. Aim at the small dark dot on the wall across mid doors.\n3. Jump throw.",
+            "img": ["dust2_xbox.png"]
+        }
+    },
+    "Anubis": {},
+    "Ancient": {},
+    "Train": {}
+}
+
 # --- POPUP NOTIFICATION ---
 class NotificationPopup(ctk.CTkFrame):
     def __init__(self, master, message, is_error=False):
@@ -232,6 +292,7 @@ class Dashboard(ctk.CTkFrame):
 
         # Nav Buttons
         self.btn_transfer = self.create_nav_btn("Transfer", self.show_transfer)
+        self.btn_lineups = self.create_nav_btn("CS2 Lineups", self.show_lineups)
         
         # --- USER PROFILE GROUP (Bottom) ---
         # Container to hold Settings + Username side-by-side
@@ -259,6 +320,7 @@ class Dashboard(ctk.CTkFrame):
         # Pages
         self.page_transfer = TransferPage(self.content_area, username)
         self.page_settings = SettingsPage(self.content_area)
+        self.page_lineups = LineupPage(self.content_area)
 
         self.show_transfer()
 
@@ -272,6 +334,10 @@ class Dashboard(ctk.CTkFrame):
     def show_transfer(self):
         self.highlight_btn(self.btn_transfer)
         self.show_frame(self.page_transfer)
+        
+    def show_lineups(self):
+        self.highlight_btn(self.btn_lineups)
+        self.show_frame(self.page_lineups)
 
     def show_settings(self):
         # Refresh the list every time we open settings
@@ -350,14 +416,362 @@ class AuthFrame(ctk.CTkFrame):
         if name:
             utils.save_user(name)
             self.on_login_success(name)
+            
+            # --- HELPER CLASS: ZOOMABLE IMAGE (Put this BEFORE LineupPage) ---
+class ZoomableImage(ctk.CTkFrame):
+    def __init__(self, master, width, height):
+        super().__init__(master, width=width, height=height, fg_color="black")
+        
+        # Internal State
+        self.original_image = None
+        self.shown_image = None
+        self.scale = 1.0
+        self.pan_x = 0
+        self.pan_y = 0
+        self._drag_data = {"x": 0, "y": 0}
 
+        # The Canvas
+        self.canvas = tk.Canvas(self, width=width, height=height, 
+                                bg="black", highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True)
+
+        # Bindings
+        # Zoom: Windows (MouseWheel), Linux (Button-4/5)
+        self.canvas.bind("<MouseWheel>", self.do_zoom) 
+        self.canvas.bind("<Button-4>", self.do_zoom)
+        self.canvas.bind("<Button-5>", self.do_zoom)
+        
+        # Pan: Click and Drag
+        self.canvas.bind("<ButtonPress-1>", self.start_pan)
+        self.canvas.bind("<B1-Motion>", self.do_pan)
+
+    def set_image(self, img_path):
+        """Loads a new image and resets zoom"""
+        if not os.path.exists(img_path): return
+
+        self.original_image = Image.open(img_path)
+        self.scale = 1.0
+        self.pan_x = 0
+        self.pan_y = 0
+        self.redraw()
+
+    def redraw(self):
+        """Calculates size/position and draws the image"""
+        if not self.original_image: return
+
+        # Get current container size (handle startup case where size is 1)
+        cw = self.winfo_width() if self.winfo_width() > 1 else self.cget("width")
+        ch = self.winfo_height() if self.winfo_height() > 1 else self.cget("height")
+
+        # 1. Calculate new dimensions
+        base_w, base_h = self.original_image.size
+        new_w = int(base_w * self.scale)
+        new_h = int(base_h * self.scale)
+
+        # 2. Resize (LANCZOS for quality)
+        resized_pil = self.original_image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        self.shown_image = ctk.CTkImage(light_image=resized_pil, dark_image=resized_pil, size=(new_w, new_h))
+        
+        # 3. Draw on Canvas
+        self.canvas.delete("all")
+        
+        # Extract tk_image from CTkImage
+        tk_img = self.shown_image.create_scaled_photo_image(1.0, "light")
+        self.canvas.image = tk_img # Keep reference
+        
+        # Center of canvas + Pan Offset
+        center_x = (cw // 2) + self.pan_x
+        center_y = (ch // 2) + self.pan_y
+        
+        self.canvas.create_image(center_x, center_y, image=tk_img, anchor="center")
+
+    def do_zoom(self, event):
+        if event.num == 5 or event.delta < 0:
+            self.scale *= 0.9 # Zoom Out
+        else:
+            self.scale *= 1.1 # Zoom In
+            
+        # Limits
+        if self.scale < 0.1: self.scale = 0.1
+        if self.scale > 5.0: self.scale = 5.0
+        
+        self.redraw()
+
+    def start_pan(self, event):
+        self._drag_data = {"x": event.x, "y": event.y}
+
+    def do_pan(self, event):
+        dx = event.x - self._drag_data["x"]
+        dy = event.y - self._drag_data["y"]
+        self.pan_x += dx
+        self.pan_y += dy
+        self._drag_data["x"] = event.x
+        self._drag_data["y"] = event.y
+        self.redraw()
+
+# --- HELPER CLASS: ZOOMABLE IMAGE ---
+class ZoomableImage(ctk.CTkFrame):
+    def __init__(self, master, width, height):
+        super().__init__(master, width=width, height=height, fg_color="black")
+        
+        # Internal State
+        self.original_image = None
+        self.shown_image = None
+        self.scale = 1.0
+        self.pan_x = 0
+        self.pan_y = 0
+        self._drag_data = {"x": 0, "y": 0}
+
+        # The Canvas
+        self.canvas = tk.Canvas(self, width=width, height=height, 
+                                bg="black", highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True)
+
+        # Bindings
+        # Zoom: Windows (MouseWheel), Linux (Button-4/5)
+        self.canvas.bind("<MouseWheel>", self.do_zoom) 
+        self.canvas.bind("<Button-4>", self.do_zoom)
+        self.canvas.bind("<Button-5>", self.do_zoom)
+        
+        # Pan: Click and Drag
+        self.canvas.bind("<ButtonPress-1>", self.start_pan)
+        self.canvas.bind("<B1-Motion>", self.do_pan)
+
+    def set_image(self, img_path):
+        """Loads a new image and resets zoom"""
+        if not os.path.exists(img_path): return
+
+        self.original_image = Image.open(img_path)
+        self.scale = 1.0
+        self.pan_x = 0
+        self.pan_y = 0
+        self.redraw()
+
+    def redraw(self):
+        """Calculates size/position and draws the image"""
+        if not self.original_image: return
+
+        # Get current container size (handle startup case where size is 1)
+        cw = self.winfo_width() if self.winfo_width() > 1 else self.cget("width")
+        ch = self.winfo_height() if self.winfo_height() > 1 else self.cget("height")
+
+        # 1. Calculate new dimensions
+        base_w, base_h = self.original_image.size
+        new_w = int(base_w * self.scale)
+        new_h = int(base_h * self.scale)
+
+        # 2. Resize (LANCZOS for quality)
+        resized_pil = self.original_image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        self.shown_image = ctk.CTkImage(light_image=resized_pil, dark_image=resized_pil, size=(new_w, new_h))
+        
+        # 3. Draw on Canvas
+        self.canvas.delete("all")
+        
+        # Extract tk_image from CTkImage
+        tk_img = self.shown_image.create_scaled_photo_image(1.0, "light")
+        self.canvas.image = tk_img # Keep reference
+        
+        # Center of canvas + Pan Offset
+        center_x = (cw // 2) + self.pan_x
+        center_y = (ch // 2) + self.pan_y
+        
+        self.canvas.create_image(center_x, center_y, image=tk_img, anchor="center")
+
+    def do_zoom(self, event):
+        if event.num == 5 or event.delta < 0:
+            self.scale *= 0.9 # Zoom Out
+        else:
+            self.scale *= 1.1 # Zoom In
+            
+        # Limits
+        if self.scale < 0.1: self.scale = 0.1
+        if self.scale > 5.0: self.scale = 5.0
+        
+        self.redraw()
+
+    def start_pan(self, event):
+        self._drag_data = {"x": event.x, "y": event.y}
+
+    def do_pan(self, event):
+        dx = event.x - self._drag_data["x"]
+        dy = event.y - self._drag_data["y"]
+        self.pan_x += dx
+        self.pan_y += dy
+        self._drag_data["x"] = event.x
+        self._drag_data["y"] = event.y
+        self.redraw()
+
+
+# --- LINEUP PAGE (Updated to use ZoomableImage) ---
+class LineupPage(ctk.CTkFrame):
+    def __init__(self, master):
+        super().__init__(master, fg_color=utils.COLOR_PAGE_BG, corner_radius=0)
+        
+        # Grid Layout
+        self.grid_columnconfigure(0, weight=0) 
+        self.grid_columnconfigure(1, weight=0) 
+        self.grid_columnconfigure(2, weight=1) 
+        self.grid_rowconfigure(0, weight=1)
+
+        # --- COL 1: MAPS SIDEBAR ---
+        self.col_maps = ctk.CTkFrame(self, width=140, corner_radius=0, fg_color=utils.COLOR_SIDEBAR)
+        self.col_maps.grid(row=0, column=0, sticky="nsew")
+        
+        ctk.CTkLabel(self.col_maps, text="MAPS", font=("Arial", 16, "bold"), text_color="gray").pack(pady=20)
+        
+        map_list = ["Mirage", "Inferno", "Dust 2", "Anubis", "Ancient", "Train"]
+        for m in map_list:
+            ctk.CTkButton(self.col_maps, text=m, fg_color="transparent", anchor="w",
+                          command=lambda map_name=m: self.load_map(map_name)).pack(fill="x", padx=10, pady=2)
+
+        # --- COL 2: LINEUPS LIST ---
+        self.col_list = ctk.CTkScrollableFrame(self, width=220, corner_radius=0, fg_color="#232323")
+        self.col_list.grid(row=0, column=1, sticky="nsew")
+        
+        self.list_header = ctk.CTkLabel(self.col_list, text="SELECT A MAP", font=("Arial", 14, "bold"), text_color="gray")
+        self.list_header.pack(pady=20)
+
+        # --- COL 3: DISPLAY AREA ---
+        self.col_display = ctk.CTkFrame(self, fg_color="transparent")
+        self.col_display.grid(row=0, column=2, sticky="nsew", padx=30, pady=30)
+        
+        self.title_lbl = ctk.CTkLabel(self.col_display, text="", font=("Arial", 28, "bold"), text_color="white")
+        self.title_lbl.pack(anchor="w", pady=(0, 10))
+        
+        self.type_badge = ctk.CTkLabel(self.col_display, text="", font=("Arial", 12, "bold"), 
+                                       text_color="white", fg_color="gray", corner_radius=6)
+        
+        # --- CAROUSEL CONTAINER ---
+        self.carousel_frame = ctk.CTkFrame(self.col_display, fg_color="transparent")
+        self.carousel_frame.pack(fill="both", expand=True, pady=10)
+
+        # Image Box Container
+        self.img_container = ctk.CTkFrame(self.carousel_frame, width=800, height=500, fg_color="black")
+        self.img_container.pack(pady=10)
+        self.img_container.pack_propagate(False) # Keep fixed size
+        
+        # --- NEW ZOOM WIDGET ---
+        self.zoom_widget = ZoomableImage(self.img_container, width=800, height=500)
+        self.zoom_widget.pack(fill="both", expand=True)
+
+        # Hint text
+        self.hint_lbl = ctk.CTkLabel(self.carousel_frame, text="🖱 Scroll to Zoom • Drag to Pan", 
+                                     font=("Arial", 12), text_color="gray")
+        self.hint_lbl.pack(pady=(0, 10))
+
+        # CONTROLS (Next/Prev)
+        self.controls_frame = ctk.CTkFrame(self.carousel_frame, fg_color="transparent")
+        self.controls_frame.pack(pady=5)
+
+        self.btn_prev = ctk.CTkButton(self.controls_frame, text="< Prev", width=80, 
+                                      command=self.prev_image, state="disabled")
+        self.btn_prev.pack(side="left", padx=10)
+
+        self.lbl_counter = ctk.CTkLabel(self.controls_frame, text="0 / 0", font=("Arial", 14, "bold"))
+        self.lbl_counter.pack(side="left", padx=10)
+
+        self.btn_next = ctk.CTkButton(self.controls_frame, text="Next >", width=80, 
+                                      command=self.next_image, state="disabled")
+        self.btn_next.pack(side="left", padx=10)
+
+        # Description Box
+        self.desc_box = ctk.CTkTextbox(self.col_display, height=150, font=("Consolas", 14), 
+                                       fg_color="#1a1a1a", text_color="#ddd")
+        self.desc_box.pack(fill="x", pady=10)
+
+        # Internal State
+        self.current_images = [] # List of filenames
+        self.img_index = 0
+
+    def load_map(self, map_name):
+        self.list_header.configure(text=f"{map_name.upper()} TACTICS")
+        
+        for widget in self.col_list.winfo_children():
+            if widget != self.list_header:
+                widget.destroy()
+
+        lineups = LINEUP_DATA.get(map_name, {})
+        if not lineups:
+            ctk.CTkLabel(self.col_list, text="No lineups added yet.", text_color="gray").pack(pady=10)
+            return
+
+        for name, data in lineups.items():
+            btn_color = "transparent"
+            if "[SMOKE]" in name: hover = "#5D4037"
+            elif "[FLASH]" in name: hover = "#FBC02D"
+            elif "[MOLY]" in name: hover = "#D32F2F"
+            else: hover = utils.COLOR_HOVER
+
+            ctk.CTkButton(self.col_list, text=name, fg_color=btn_color, hover_color=hover, anchor="w",
+                          command=lambda n=name, d=data: self.show_details(n, d)).pack(fill="x", pady=2)
+
+    def show_details(self, name, data):
+        self.title_lbl.configure(text=name)
+        
+        l_type = data.get("type", "General")
+        self.type_badge.configure(text=f" {l_type.upper()} ", 
+                                  fg_color="#666" if l_type == "Smoke" else "#D32F2F" if l_type == "Molly" else "#FBC02D")
+        self.type_badge.pack(anchor="w", pady=(0, 20))
+
+        self.desc_box.delete("0.0", "end")
+        self.desc_box.insert("0.0", data.get("desc", "No description."))
+
+        # --- HANDLE IMAGES (List or String) ---
+        raw_img = data.get("img")
+        
+        if isinstance(raw_img, list):
+            self.current_images = raw_img
+        elif isinstance(raw_img, str):
+            self.current_images = [raw_img]
+        else:
+            self.current_images = []
+
+        self.img_index = 0
+        self.update_carousel()
+
+    def update_carousel(self):
+        total = len(self.current_images)
+        
+        # 1. Update Buttons
+        if total <= 1:
+            self.btn_prev.configure(state="disabled", fg_color="transparent")
+            self.btn_next.configure(state="disabled", fg_color="transparent")
+            self.lbl_counter.configure(text="")
+        else:
+            self.btn_prev.configure(state="normal" if self.img_index > 0 else "disabled", 
+                                    fg_color=utils.COLOR_ACCENT if self.img_index > 0 else "transparent")
+            self.btn_next.configure(state="normal" if self.img_index < total - 1 else "disabled",
+                                    fg_color=utils.COLOR_ACCENT if self.img_index < total - 1 else "transparent")
+            self.lbl_counter.configure(text=f"{self.img_index + 1} / {total}")
+
+        # 2. Load Image into Zoom Widget
+        if total == 0:
+            return
+
+        img_name = self.current_images[self.img_index]
+        img_path = os.path.join("assets", img_name)
+        
+        # Pass the file path to the zoom widget
+        # It handles all the resizing, centering, and zooming logic internally
+        self.zoom_widget.set_image(img_path)
+
+    def next_image(self):
+        if self.img_index < len(self.current_images) - 1:
+            self.img_index += 1
+            self.update_carousel()
+
+    def prev_image(self):
+        if self.img_index > 0:
+            self.img_index -= 1
+            self.update_carousel()
+            
 # --- APP CONTROLLER ---
 class FirelinkApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Firelink")
-        self.geometry("1000x650") 
-        self.resizable(False, False)
+        self.geometry("1280x800") 
+        self.resizable(True, True)
 
         icon_path = utils.resource_path(os.path.join("img", "fire.ico"))
         if os.path.exists(icon_path): self.iconbitmap(icon_path)

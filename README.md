@@ -30,5 +30,10 @@ python main.py
 ```bash
 pyinstaller --noconsole --onefile --icon=img/fire.ico --add-data "img;img" --name="Firelink" main.py
 ```
+or run it directly through python
+
+```bash
+python -m PyInstaller --noconsole --onefile --icon=img/fire.ico --add-data "img;img" --name="Firelink" main.py
+```
 
 - Find it at `dist/Firelink.exe`
