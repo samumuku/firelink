@@ -1,6 +1,7 @@
 import socket
 import os
 import threading
+import utils
 
 # --- CONFIGURATION ---
 TCP_PORT = 5001
@@ -37,6 +38,15 @@ class FileTransfer:
         while True:
             # Accept Connection
             client_socket, address = server_socket.accept()
+            
+            ip = address[0] # get the IP address
+            
+            blocked_users = utils.load_blocked()
+            if ip in blocked_users:
+                print(f"[-] Blocked connection attempt from {ip}")
+                client_socket.close() # close immediately
+                continue # skip to next
+            
             print(f"[+] Connection from {address}")
             
             try:

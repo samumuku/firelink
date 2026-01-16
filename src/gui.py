@@ -13,63 +13,63 @@ import file_transfer
 
 
 # --- CS2 LINEUP DATABASE ---
-# Grouping: Map -> Lineup Name -> Data
-LINEUP_DATA = {
-    "Mirage": {
-        "[SMOKE] A Stairs": {
-            "type": "Smoke",
-            "desc": "jumpthrow",
-            "img": ["Mirage/A-Stairs/step1.jpg", "Mirage/A-Stairs/jumpthrow.jpg"]
-        },
-        "[SMOKE] A Jungle": {
-            "type": "Smoke",
-            "desc": "Jumpthrow",
-            "img": ["Mirage/Jungle/step1.jpg", "Mirage/Jungle/step2.jpg"]
-        },
-        "[SMOKE] Window (Bin Spawn)": {
-            "type": "Smoke",
-            "desc": "Hold D and jump throw",
-            "img": ["Mirage/Window/step1.jpg", "Mirage/Window/d_and_jumpthrow.jpg"]
-        },
-        "[SMOKE] Mid Short (spawn)": {
-            "type": "Smoke",
-            "desc": "jumpthrow",
-            "img": ["Mirage/Short/step1.jpg", "Mirage/Short/jumpthrow.jpg"]
-        },
-        "[SMOKE] Mid Connector (spawn)": {
-            "type": "Smoke",
-            "desc": "On the bin, crouch and then jumpthrow",
-            "img": ["Mirage/Connector/step1.jpg", "Mirage/Connector/crouch_jumpthrow.jpg"]
-        },
-        "[SMOKE] Ticket": {
-            "type": "Smoke",
-            "desc": "jumpthrow",
-            "img": ["Mirage/CtSpawn/step1.jpg", "Mirage/CtSpawn/step2.jpg"]
-        },
-        "[FLASH] CT to site flash (spawn)": {
-            "type": "Flash",
-            "desc": "Flash on site. Regular throw",
-            "img": ["Mirage/FlashSiteA-CT/step1.jpg", "Mirage/FlashSiteA-CT/regular_throw.jpg"]
-        },
-    },
-    "Inferno": {
-        "[MOLY] B Banana (Car)": {
-            "type": "Molly",
-            "desc": "1. Stand on the logs at the bottom of Banana.\n2. Aim at the top of the antenna.\n3. Run forward slightly and Left-click throw.",
-            "img": ["inferno_car.png"]
-        }
-    },
-    "Dust 2": {
-        "[SMOKE] Xbox (Mid)": {
-            "type": "Smoke",
-            "desc": "1. T Spawn, hug the wall near Suicided.\n2. Aim at the small dark dot on the wall across mid doors.\n3. Jump throw.",
-            "img": ["dust2_xbox.png"]
-        }
-    },
-    "Anubis": {},
-    "Ancient": {},
-    "Train": {}
-}
+# # Grouping: Map -> Lineup Name -> Data
+# LINEUP_DATA = {
+#     "Mirage": {
+#         "[SMOKE] A Stairs": {
+#             "type": "Smoke",
+#             "desc": "jumpthrow",
+#             "img": ["Mirage/A-Stairs/step1.jpg", "Mirage/A-Stairs/jumpthrow.jpg"]
+#         },
+#         "[SMOKE] A Jungle": {
+#             "type": "Smoke",
+#             "desc": "Jumpthrow",
+#             "img": ["Mirage/Jungle/step1.jpg", "Mirage/Jungle/step2.jpg"]
+#         },
+#         "[SMOKE] Window (Bin Spawn)": {
+#             "type": "Smoke",
+#             "desc": "Hold D and jump throw",
+#             "img": ["Mirage/Window/step1.jpg", "Mirage/Window/d_and_jumpthrow.jpg"]
+#         },
+#         "[SMOKE] Mid Short (spawn)": {
+#             "type": "Smoke",
+#             "desc": "jumpthrow",
+#             "img": ["Mirage/Short/step1.jpg", "Mirage/Short/jumpthrow.jpg"]
+#         },
+#         "[SMOKE] Mid Connector (spawn)": {
+#             "type": "Smoke",
+#             "desc": "On the bin, crouch and then jumpthrow",
+#             "img": ["Mirage/Connector/step1.jpg", "Mirage/Connector/crouch_jumpthrow.jpg"]
+#         },
+#         "[SMOKE] Ticket": {
+#             "type": "Smoke",
+#             "desc": "jumpthrow",
+#             "img": ["Mirage/CtSpawn/step1.jpg", "Mirage/CtSpawn/step2.jpg"]
+#         },
+#         "[FLASH] CT to site flash (spawn)": {
+#             "type": "Flash",
+#             "desc": "Flash on site. Regular throw",
+#             "img": ["Mirage/FlashSiteA-CT/step1.jpg", "Mirage/FlashSiteA-CT/regular_throw.jpg"]
+#         },
+#     },
+#     "Inferno": {
+#         "[MOLY] B Banana (Car)": {
+#             "type": "Molly",
+#             "desc": "1. Stand on the logs at the bottom of Banana.\n2. Aim at the top of the antenna.\n3. Run forward slightly and Left-click throw.",
+#             "img": ["inferno_car.png"]
+#         }
+#     },
+#     "Dust 2": {
+#         "[SMOKE] Xbox (Mid)": {
+#             "type": "Smoke",
+#             "desc": "1. T Spawn, hug the wall near Suicided.\n2. Aim at the small dark dot on the wall across mid doors.\n3. Jump throw.",
+#             "img": ["dust2_xbox.png"]
+#         }
+#     },
+#     "Anubis": {},
+#     "Ancient": {},
+#     "Train": {}
+# }
 
 # --- POPUP NOTIFICATION ---
 class NotificationPopup(ctk.CTkFrame):
@@ -292,7 +292,7 @@ class Dashboard(ctk.CTkFrame):
 
         # Nav Buttons
         self.btn_transfer = self.create_nav_btn("Transfer", self.show_transfer)
-        self.btn_lineups = self.create_nav_btn("CS2 Lineups", self.show_lineups)
+        #self.btn_lineups = self.create_nav_btn("CS2 Lineups", self.show_lineups)
         
         # --- USER PROFILE GROUP (Bottom) ---
         # Container to hold Settings + Username side-by-side
