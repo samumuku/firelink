@@ -88,7 +88,7 @@ class ConfirmationPopup(ctk.CTkToplevel):
     def __init__(self, master, filename, sender_ip, size_bytes, on_response):
         super().__init__(master)
         self.title("Incoming File")
-        self.geometry("400x200")
+        self.geometry("400x250")
         self.resizable(False, False)
         self.transient(master) # Make it float on top
         self.grab_set() # Block other windows interactions
@@ -108,9 +108,11 @@ class ConfirmationPopup(ctk.CTkToplevel):
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
         btn_frame.pack(pady=20)
         
+        # Button 1: Decline
         ctk.CTkButton(btn_frame, text="Decline", fg_color=utils.COLOR_ERROR, width=100, 
                       command=self.decline).pack(side="left", padx=10)
         
+        # Button 2: Accept
         ctk.CTkButton(btn_frame, text="Accept", fg_color=utils.COLOR_PROGRESS, width=100, 
                       command=self.accept).pack(side="left", padx=10)
 
