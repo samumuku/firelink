@@ -83,6 +83,44 @@ class NotificationPopup(ctk.CTkFrame):
         
         self.place(relx=0.98, rely=0.95, anchor="se")
         self.after(3000, self.destroy)
+        
+class ConfirmationPopup(ctk.CTkToplevel):
+    def __init__(self, master, filename, sender_ip, size_bytes, on_response):
+        super().__init__(master)
+        self.title("Incoming File")
+        self.geometry("400x200")
+        self.resizable(False, False)
+        self.transient(master) # Make it float on top
+        self.grab_set() # Block other windows interactions
+        
+        self.on_response = on_response
+        
+        # Calculate size in MB
+        size_mb = size_bytes / (1024 * 1024)
+        size_str = f"{size_mb:.2f} MB" if size_mb >= 1 else f"{size_bytes/1024:.2f} KB"
+
+        # UI
+        ctk.CTkLabel(self, text="INCOMING FILE REQUEST", font=("Arial", 16, "bold"), text_color=utils.COLOR_ACCENT).pack(pady=(20, 10))
+        
+        msg = f"User at {sender_ip} wants to send:\n\n📄 {filename}\n({size_str})"
+        ctk.CTkLabel(self, text=msg, font=("Arial", 14)).pack(pady=10)
+        
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.pack(pady=20)
+        
+        ctk.CTkButton(btn_frame, text="Decline", fg_color=utils.COLOR_ERROR, width=100, 
+                      command=self.decline).pack(side="left", padx=10)
+        
+        ctk.CTkButton(btn_frame, text="Accept", fg_color=utils.COLOR_PROGRESS, width=100, 
+                      command=self.accept).pack(side="left", padx=10)
+
+    def accept(self):
+        self.on_response(True)
+        self.destroy()
+
+    def decline(self):
+        self.on_response(False)
+        self.destroy()
 
 # --- PAGE 1: SETTINGS (BLOCKED USERS) ---
 class SettingsPage(ctk.CTkFrame):
@@ -130,15 +168,18 @@ class TransferPage(ctk.CTkFrame):
         super().__init__(master, fg_color=utils.COLOR_PAGE_BG, corner_radius=0)
         self.my_name = username
         
-        # Logic
+        # Logic - Updated start_receiver call
         real_downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
         self.transfer_engine = file_transfer.FileTransfer(download_folder=real_downloads_path)
-        self.transfer_engine.start_receiver(self.update_status, self.update_progress)
+        
+        # Pass the new ask_permission method here
+        self.transfer_engine.start_receiver(self.update_status, self.update_progress, self.ask_permission)
 
         self.selected_friend_ip = None
-        self.friend_widgets = {} # Maps IP -> Button Widget
+        self.friend_widgets = {} 
 
-        # Layout
+        # ... (Rest of your layout code remains exactly the same) ...
+        # (Copy the Layout section from your previous gui.py here)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -181,29 +222,40 @@ class TransferPage(ctk.CTkFrame):
         self.discovery = network.PeerDiscovery(self.my_name, self.found_friend, None)
         self.discovery.start()
 
-    def found_friend(self, name, ip):
-        # 1. Check if Blocked
-        if utils.is_blocked(ip):
-            return # Ignore them completely
+    # --- NEW METHOD FOR PERMISSION ---
+    def ask_permission(self, filename, ip, size, event, result_container):
+        """
+        Called by the background thread. We must use .after() to 
+        safely create the popup on the Main GUI Thread.
+        """
+        def show():
+            # Define what happens when user clicks buttons in popup
+            def on_decision(allowed):
+                result_container["allow"] = allowed
+                event.set() # Unblock the file_transfer thread
             
-        # 2. Check if already known
+            # Create popup
+            ConfirmationPopup(self.winfo_toplevel(), filename, ip, size, on_decision)
+        
+        # Schedule it on the main thread immediately
+        self.after(0, show)
+
+    # ... (Rest of your methods: found_friend, create_friend_button, etc. remain the same) ...
+    def found_friend(self, name, ip):
+        if utils.is_blocked(ip): return 
         if ip not in self.friend_widgets:
             self.after(0, lambda: self.create_friend_button(name, ip))
 
     def create_friend_button(self, name, ip):
         if ip in self.friend_widgets: return
-
         icon = self.get_status_icon()
         btn = ctk.CTkButton(self.friends_list, text=f"  {name}", image=icon, compound="left",
                             fg_color="transparent", border_width=1, border_color="#B22222", 
                             hover_color=utils.COLOR_ACCENT, anchor="w",
                             command=lambda: self.select_friend(name, ip))
         btn.pack(pady=5, fill="x")
-        
-        # Store widget reference
         self.friend_widgets[ip] = btn
-
-        # Context Menu
+        
         context_menu = tk.Menu(self, tearoff=0, bg=utils.COLOR_PAGE_BG, fg="white")
         context_menu.add_command(label="Ping User", command=lambda: self.ping_user(ip, name))
         context_menu.add_command(label="Block User", command=lambda: self.block_user_action(ip, name))
@@ -216,7 +268,6 @@ class TransferPage(ctk.CTkFrame):
 
     def block_user_action(self, ip, name):
         utils.block_user(ip, name)
-        # Remove button from UI immediately
         if ip in self.friend_widgets:
             self.friend_widgets[ip].destroy()
             del self.friend_widgets[ip]
@@ -269,7 +320,7 @@ class TransferPage(ctk.CTkFrame):
         draw = ImageDraw.Draw(img)
         draw.ellipse((1, 1, 13, 13), fill=utils.COLOR_PROGRESS) 
         return ctk.CTkImage(img, img, size=size)
-
+    
 # --- DASHBOARD ---
 class Dashboard(ctk.CTkFrame):
     def __init__(self, master, username):
