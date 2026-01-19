@@ -5,11 +5,13 @@ from PIL import Image, ImageDraw
 import os
 import threading
 import subprocess
+import webbrowser
 
 # fichiers
 import utils
 import network
 import file_transfer
+import scanner
 
 
 # --- CS2 LINEUP DATABASE ---
@@ -323,6 +325,86 @@ class TransferPage(ctk.CTkFrame):
         draw.ellipse((1, 1, 13, 13), fill=utils.COLOR_PROGRESS) 
         return ctk.CTkImage(img, img, size=size)
     
+    # --- PAGE 3: NETWORK SCANNER ---
+class ScannerPage(ctk.CTkFrame):
+    def __init__(self, master):
+        super().__init__(master, fg_color=utils.COLOR_PAGE_BG, corner_radius=0)
+        
+        self.scanner = scanner.NetworkScanner()
+        
+        # Header
+        self.top_bar = ctk.CTkFrame(self, fg_color="transparent")
+        self.top_bar.pack(fill="x", padx=40, pady=30)
+        
+        ctk.CTkLabel(self.top_bar, text="Network Scanner", font=("Arial", 24, "bold"), text_color="white").pack(side="left")
+        
+        # Controls
+        self.btn_scan = ctk.CTkButton(self.top_bar, text="Scan Network", width=120, height=35,
+                                      fg_color=utils.COLOR_ACCENT, hover_color=utils.COLOR_HOVER,
+                                      command=self.start_scan)
+        self.btn_scan.pack(side="right", padx=10)
+
+        # Router Admin Button
+        self.btn_router = ctk.CTkButton(self.top_bar, text="Router Admin", width=120, height=35,
+                                        fg_color="transparent", border_width=1, border_color="gray",
+                                        command=self.open_router_admin)
+        self.btn_router.pack(side="right", padx=10)
+
+        # Loading Indicator
+        self.progress = ctk.CTkProgressBar(self, height=4, progress_color=utils.COLOR_ACCENT)
+        self.progress.set(0)
+        
+        # Results List
+        self.headers = ctk.CTkFrame(self, fg_color=utils.COLOR_FRIENDS_BG, height=40)
+        self.headers.pack(fill="x", padx=40, pady=(10, 0))
+        
+        # Header Labels
+        ctk.CTkLabel(self.headers, text="IP Address", font=("Arial", 12, "bold"), width=150, anchor="w").pack(side="left", padx=10)
+        ctk.CTkLabel(self.headers, text="MAC Address", font=("Arial", 12, "bold"), width=150, anchor="w").pack(side="left", padx=10)
+        ctk.CTkLabel(self.headers, text="Hostname / Vendor", font=("Arial", 12, "bold"), anchor="w").pack(side="left", padx=10)
+
+        self.results_scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.results_scroll.pack(fill="both", expand=True, padx=40, pady=10)
+
+    def open_router_admin(self):
+        gateway = self.scanner.get_default_gateway()
+        if gateway:
+            webbrowser.open(f"http://{gateway}")
+        else:
+            NotificationPopup(self.winfo_toplevel(), "Could not find Gateway IP", True)
+
+    def start_scan(self):
+        self.btn_scan.configure(state="disabled", text="Scanning...")
+        self.progress.pack(fill="x", padx=40, pady=(0, 10))
+        self.progress.configure(mode="indeterminate")
+        self.progress.start()
+        
+        # Clear old results
+        for widget in self.results_scroll.winfo_children():
+            widget.destroy()
+            
+        self.scanner.start_scan(self.add_device_row, self.scan_finished)
+
+    def add_device_row(self, device):
+        # Must run on main thread
+        self.after(0, lambda: self._create_row(device))
+
+    def _create_row(self, device):
+        row = ctk.CTkFrame(self.results_scroll, fg_color=utils.COLOR_FRIENDS_BG, height=35)
+        row.pack(fill="x", pady=2)
+        
+        ctk.CTkLabel(row, text=device["ip"], width=150, anchor="w").pack(side="left", padx=10)
+        ctk.CTkLabel(row, text=device["mac"], width=150, text_color="gray", anchor="w").pack(side="left", padx=10)
+        ctk.CTkLabel(row, text=device["name"], text_color="white", anchor="w").pack(side="left", padx=10)
+
+    def scan_finished(self):
+        self.after(0, self._stop_loading)
+
+    def _stop_loading(self):
+        self.progress.stop()
+        self.progress.pack_forget()
+        self.btn_scan.configure(state="normal", text="Scan Network")
+    
 # --- DASHBOARD ---
 class Dashboard(ctk.CTkFrame):
     def __init__(self, master, username):
@@ -345,6 +427,7 @@ class Dashboard(ctk.CTkFrame):
 
         # Nav Buttons
         self.btn_transfer = self.create_nav_btn("Transfer", self.show_transfer)
+        self.btn_scanner = self.create_nav_btn("Network Scan", self.show_scanner)
         #self.btn_lineups = self.create_nav_btn("CS2 Lineups", self.show_lineups)
         
         # --- USER PROFILE GROUP (Bottom) ---
@@ -358,6 +441,7 @@ class Dashboard(ctk.CTkFrame):
                                           text_color="gray", font=("Arial", 20),
                                           command=self.show_settings)
         self.btn_settings.pack(side="left")
+        
 
         # Username Label (Next to it)
         display_name = (username[:10] + '..') if len(username) > 12 else username
@@ -374,6 +458,7 @@ class Dashboard(ctk.CTkFrame):
         self.page_transfer = TransferPage(self.content_area, username)
         self.page_settings = SettingsPage(self.content_area)
         self.page_lineups = LineupPage(self.content_area)
+        self.page_scanner = ScannerPage(self.content_area)
 
         self.show_transfer()
 
@@ -388,6 +473,10 @@ class Dashboard(ctk.CTkFrame):
         self.highlight_btn(self.btn_transfer)
         self.show_frame(self.page_transfer)
         
+    def show_scanner(self):
+        self.highlight_btn(self.btn_scanner)
+        self.show_frame(self.page_scanner)
+
     def show_lineups(self):
         self.highlight_btn(self.btn_lineups)
         self.show_frame(self.page_lineups)
@@ -404,7 +493,7 @@ class Dashboard(ctk.CTkFrame):
         frame.grid(row=0, column=0, sticky="nsew")
 
     def highlight_btn(self, active_btn):
-        for btn in [self.btn_transfer, self.btn_settings]:
+        for btn in [self.btn_transfer, self.btn_scanner, self.btn_settings]:
             btn.configure(fg_color="transparent", text_color="lightgray")
         # Note: If settings is active, we color the text/icon
         if active_btn == self.btn_settings:
