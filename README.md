@@ -27,9 +27,18 @@ python main.py
 
 ### Create an exe file to share
 
+Windows
+
 ```bash
 pyinstaller --noconsole --onefile --icon=img/fire.ico --add-data "img;img" --name="Firelink" main.py
 ```
+
+Mac
+
+```bash
+pyinstaller --noconsole --onefile --icon=img/fire.ico --add-data "img:img" --name="Firelink" main.py
+```
+
 or run it directly through python
 
 ```bash
