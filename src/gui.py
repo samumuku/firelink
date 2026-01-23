@@ -125,6 +125,41 @@ class ConfirmationPopup(ctk.CTkToplevel):
     def decline(self):
         self.on_response(False)
         self.destroy()
+    
+class DeviceDetailsPopup(ctk.CTkToplevel):
+    def __init__(self, master, device):
+        super().__init__(master)
+        self.title("Device Details")
+        self.geometry("350x300")
+        self.resizable(False, False)
+        self.transient(master) # Float on top
+        
+        # Title
+        ctk.CTkLabel(self, text="DEVICE INFO", font=("Arial", 18, "bold"), text_color=utils.COLOR_ACCENT).pack(pady=20)
+        
+        # Info Box
+        info_frame = ctk.CTkFrame(self, fg_color="#1a1a1a")
+        info_frame.pack(fill="x", padx=20, pady=10)
+        
+        self.add_row(info_frame, "Name:", device["name"])
+        self.add_row(info_frame, "IP Address:", device["ip"])
+        self.add_row(info_frame, "MAC Address:", device["mac"])
+        
+        # "How to Block" Hint
+        msg = "To block this device, copy the MAC address,\nopen Router Admin, and add to Block List."
+        ctk.CTkLabel(self, text=msg, text_color="gray", font=("Arial", 11)).pack(pady=20)
+
+        # Close Button
+        ctk.CTkButton(self, text="Close", fg_color=utils.COLOR_SIDEBAR, command=self.destroy).pack(pady=10)
+
+    def add_row(self, parent, label, value):
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(fill="x", pady=5, padx=10)
+        ctk.CTkLabel(row, text=label, width=100, anchor="w", font=("Arial", 12, "bold")).pack(side="left")
+        
+        # Value with copy-on-click functionality
+        val_btn = ctk.CTkButton(row, text=value, fg_color="transparent", anchor="w", text_color="white", width=150, hover=False)
+        val_btn.pack(side="left")
 
 # --- PAGE 1: SETTINGS (BLOCKED USERS) ---
 class SettingsPage(ctk.CTkFrame):
@@ -390,13 +425,46 @@ class ScannerPage(ctk.CTkFrame):
         self.after(0, lambda: self._create_row(device))
 
     def _create_row(self, device):
-        row = ctk.CTkFrame(self.results_scroll, fg_color=utils.COLOR_FRIENDS_BG, height=35)
+        row = ctk.CTkFrame(self.results_scroll, fg_color=utils.COLOR_FRIENDS_BG, height=40)
         row.pack(fill="x", pady=2)
         
-        ctk.CTkLabel(row, text=device["ip"], width=150, anchor="w").pack(side="left", padx=10)
-        ctk.CTkLabel(row, text=device["mac"], width=150, text_color="gray", anchor="w").pack(side="left", padx=10)
-        ctk.CTkLabel(row, text=device["name"], text_color="white", anchor="w").pack(side="left", padx=10)
+        # IP
+        ctk.CTkLabel(row, text=device["ip"], width=120, anchor="w").pack(side="left", padx=10)
+        
+        # Name (Truncated)
+        name_text = device["name"]
+        if len(name_text) > 15: name_text = name_text[:15] + "..."
+        ctk.CTkLabel(row, text=name_text, text_color="white", width=120, anchor="w").pack(side="left", padx=5)
+        
+        # --- RIGHT SIDE BUTTONS ---
+        
+        # 1. INFO Button
+        ctk.CTkButton(row, text="Info", width=50, height=25, 
+                      fg_color=utils.COLOR_SIDEBAR, hover_color=utils.COLOR_HOVER,
+                      command=lambda: self.show_device_details(device)).pack(side="right", padx=(5, 10))
 
+        # 2. WAKE BUTTON (New!)
+        # We only show this if we have a valid MAC, as WoL relies entirely on MAC
+        if len(device["mac"]) > 10:
+            ctk.CTkButton(row, text="⚡", width=30, height=25, 
+                          fg_color="#FBC02D", hover_color="#F9A825", text_color="black",
+                          command=lambda: self.perform_wol(device)).pack(side="right", padx=0)
+    
+    def show_device_details(self, device):
+        DeviceDetailsPopup(self.winfo_toplevel(), device)
+
+    def perform_wol(self, device):
+        mac = device.get("mac")
+        if not mac: return
+        
+        # Send the packet
+        success = self.scanner.send_wol(mac)
+        
+        # Show feedback
+        if success:
+            NotificationPopup(self.winfo_toplevel(), f"Sent Wake Signal to {device['name']}", False)
+        else:
+            NotificationPopup(self.winfo_toplevel(), "Failed to send Wake Signal", True)
     def scan_finished(self):
         self.after(0, self._stop_loading)
 
@@ -488,8 +556,13 @@ class Dashboard(ctk.CTkFrame):
         self.show_frame(self.page_settings)
 
     def show_frame(self, frame):
+        # Hide ALL pages first
         self.page_transfer.grid_forget()
         self.page_settings.grid_forget()
+        self.page_lineups.grid_forget()
+        self.page_scanner.grid_forget()
+        
+        # Show the requested page
         frame.grid(row=0, column=0, sticky="nsew")
 
     def highlight_btn(self, active_btn):
