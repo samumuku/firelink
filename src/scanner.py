@@ -121,16 +121,41 @@ class NetworkScanner:
     def send_wol(self, mac_address):
         """Sends a Magic Packet to wake up the specified MAC address"""
         try:
+            # 1. Clean the MAC address
             clean_mac = mac_address.replace(":", "").replace("-", "")
-            if len(clean_mac) != 12: return False
+            if len(clean_mac) != 12:
+                print(f"Invalid MAC: {mac_address}")
+                return False
 
+            # 2. Build the Magic Packet
             data = bytes.fromhex("FF" * 6 + clean_mac * 16)
             
+            # 3. Determine Broadcast Addresses
+            # We want to send to 255.255.255.255 AND 192.168.1.255 (Subnet broadcast)
+            targets = ["255.255.255.255"]
+            try:
+                my_ip = self.get_my_ip()
+                if my_ip != "127.0.0.1":
+                    # Assumes a standard home network (/24 subnet)
+                    parts = my_ip.split(".")
+                    subnet_broadcast = f"{parts[0]}.{parts[1]}.{parts[2]}.255"
+                    targets.append(subnet_broadcast)
+            except: pass
+
+            # 4. Blast the packet
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                sock.sendto(data, ("255.255.255.255", 9))
+                
+                for target_ip in targets:
+                    for port in [7, 9]: # Try both standard WoL ports
+                        try:
+                            sock.sendto(data, (target_ip, port))
+                        except Exception as e:
+                            print(f"Failed to send to {target_ip}:{port} - {e}")
+            
             return True
-        except Exception:
+        except Exception as e:
+            print(f"WoL Critical Error: {e}")
             return False
 
     def _parse_arp_table(self, base_ip_filter, callback):
